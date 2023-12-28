@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "docker/**"
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/dockerfile
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: docker build -t ${{ secrets.DOCKER }}/kubernetes:${{ github.run_number }} ./docker
+
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKER }}/kubernetes:${{ github.run_number }}
+          #exit-code-on-severity: "HIGH"
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER }}
+          password: ${{ secrets.TOKEN }}
+
+      - name: Push Docker image
+        run: docker push ${{ secrets.DOCKER }}/kubernetes:${{ github.run_number }}
+
+      - name: Test Docker image
+        run: |
+          docker pull ${{ secrets.DOCKER }}/kubernetes:${{ github.run_number }}
+          docker run -d --name test-container -p 8080:80 ${{ secrets.DOCKER }}/kubernetes:${{ github.run_number }}
+          sleep 10 # Time for the container to start properly
+
+          # Perform a curl to the web application page
+          curl_output=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          if [ "$curl_output" == "200" ]; then
+            echo "Test passed: Application is accessible"
+          else
+            echo "Test failed: Application is not accessible or did not return a 200 status code"
+            exit 1
+          fi
+
+          # Stop and remove the test container
+          docker stop test-container && docker rm test-container
+
+          # Remove the Docker image used for testing
+          docker image rm ${{ secrets.DOCKER }}/kubernetes:${{ github.run_number }}
