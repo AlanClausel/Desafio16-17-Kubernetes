@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: website-carrito
+  namespace: desafio-16-17
+  labels:
+    app: website-carrito
+spec:
+  replicas: 2  # El número de réplicas que necesites
+  selector:
+    matchLabels:
+      app: website-carrito
+  strategy:
+    type: RollingUpdate  # Estrategia de actualización
+    rollingUpdate:
+      maxSurge: 1  # Máximo de pods adicionales durante la actualización
+      maxUnavailable: 0  # Máximo de pods no disponibles durante la actualización
+  template:
+    metadata:
+      labels:
+        app: website-carrito
+    spec:
+      containers:
+      - name: website
+        image: alanclausel/kubernetes:1
+        ports:
+        - containerPort: 80
